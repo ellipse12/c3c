@@ -2535,7 +2535,7 @@ static bool sema_analyse_attribute(SemaContext *context, ResolvedAttrData *attr_
 			RETURN_SEMA_ERROR(attr, "'operator' requires an operator type argument: '[]', '[]=', '&[]' or 'len'.");
 		}
 		case ATTRIBUTE_ADHOC:
-			decl->is_adhoc = true;
+			SEMA_DEPRECATED(attr, "'@adhoc' is deprecated.");
 			return true;
 		case ATTRIBUTE_ALIGN:
 			if (!expr)
@@ -3716,13 +3716,18 @@ bool sema_analyse_var_decl_ct(SemaContext *context, Decl *decl)
 			// Resolve the type if it's present.
 			if (type_info)
 			{
-				if (!sema_resolve_type_info(context, type_info, RESOLVE_TYPE_DEFAULT)) goto FAIL;
+				if (!sema_resolve_type_info(context, type_info, RESOLVE_TYPE_ALLOW_INFER)) goto FAIL;
 				// Set the type of the declaration.
-				decl->type = type_info->type->canonical;
+				decl->type = type_info->type;
 				init = decl->var.init_expr;
 				// If there is no init, set it to zero.
 				if (!init)
 				{
+					if (type_is_inferred(decl->type))
+					{
+						SEMA_ERROR(type_info, "No size could be inferred.");
+						goto FAIL;
+					}
 					decl->var.init_expr = init = expr_new(EXPR_POISONED, decl->span);
 					expr_rewrite_to_const_zero(init, decl->type);
 				}
@@ -3730,6 +3735,10 @@ bool sema_analyse_var_decl_ct(SemaContext *context, Decl *decl)
 				// Analyse the expression.
 				if (!sema_analyse_expr_rhs(context, decl->type, init, false, NULL, false)) goto FAIL;
 
+				if (type_is_inferred(decl->type))
+				{
+					decl->type = init->type;
+				}
 				// Check that it is constant.
 				if (!expr_is_runtime_const(init))
 				{
@@ -4059,7 +4068,8 @@ static Module *module_instantiate_generic(SemaContext *context, Module *module, 
 	return new_module;
 }
 
-static bool sema_generate_parameterized_name_to_scratch(SemaContext *context, Module *module, Expr **params, bool mangled)
+static bool sema_generate_parameterized_name_to_scratch(SemaContext *context, Module *module, Expr **params,
+                                                        bool mangled, bool *was_recursive_ref)
 {
 	// First resolve
 	FOREACH_IDX(i, Expr *, param, params)
@@ -4067,6 +4077,7 @@ static bool sema_generate_parameterized_name_to_scratch(SemaContext *context, Mo
 		if (param->expr_kind == EXPR_TYPEINFO)
 		{
 			TypeInfo *type_info = param->type_expr;
+			if (was_recursive_ref && type_info->kind == TYPE_INFO_GENERIC) *was_recursive_ref = true;
 			if (!sema_resolve_type_info(context, type_info, RESOLVE_TYPE_DEFAULT)) return false;
 			Type *type = type_info->type->canonical;
 			if (type->type_kind == TYPE_OPTIONAL) RETURN_SEMA_ERROR(type_info, "Expected a non-optional type.");
@@ -4223,7 +4234,8 @@ static bool sema_analyse_generic_module_contracts(SemaContext *c, Module *module
 }
 
 
-Decl *sema_analyse_parameterized_identifier(SemaContext *c, Path *decl_path, const char *name, SourceSpan span, Expr **params)
+Decl *sema_analyse_parameterized_identifier(SemaContext *c, Path *decl_path, const char *name, SourceSpan span,
+                                            Expr **params, bool *was_recursive_ref)
 {
 	NameResolve name_resolve = {
 			.path = decl_path,
@@ -4246,7 +4258,7 @@ Decl *sema_analyse_parameterized_identifier(SemaContext *c, Path *decl_path, con
 					  vec_size(params));
 		return poisoned_decl;
 	}
-	if (!sema_generate_parameterized_name_to_scratch(c, module, params, true)) return poisoned_decl;
+	if (!sema_generate_parameterized_name_to_scratch(c, module, params, true, was_recursive_ref)) return poisoned_decl;
 	TokenType ident_type = TOKEN_IDENT;
 	const char *path_string = scratch_buffer_interned();
 	Module *instantiated_module = global_context_find_module(path_string);
@@ -4260,7 +4272,7 @@ Decl *sema_analyse_parameterized_identifier(SemaContext *c, Path *decl_path, con
 		path->span = module->name->span;
 		path->len = scratch_buffer.len;
 		instantiated_module = module_instantiate_generic(c, module, path, params, span);
-		if (!sema_generate_parameterized_name_to_scratch(c, module, params, false)) return poisoned_decl;
+		if (!sema_generate_parameterized_name_to_scratch(c, module, params, false, NULL)) return poisoned_decl;
 		if (!instantiated_module) return poisoned_decl;
 		instantiated_module->generic_suffix = scratch_buffer_copy();
 		if (c->unit->module->generic_module)

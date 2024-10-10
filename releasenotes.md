@@ -1,5 +1,38 @@
 # C3C Release Notes
 
+## 0.6.4 Change list
+
+### Changes / improvements
+- Const vector -> const slice implicit conversion.
+- Slicing arrays, slices and bytes at compile time #1466.
+- Better error for `int a[4] = ...`. #1518
+- Better error for `int Foo(int a)` declarations #1516
+- Improve error message in the case of `MyInterface x = foo;` #1522
+- Deprecate `@adhoc`, allow non-nested ad hoc generic types.
+- Constant bytes <=> char[] conversion should work #1514.
+- Infer now works across ternary.
+- Improved error message on invalid subscript index type #1535.
+
+### Fixes
+- `Unsupported int[*] $x = { 1, 2, 3, 4 }` #1489.
+- Unexpected compile error using a typed constant with `copysign` #1517
+- Incorrect subscript resolution #1519.
+- Segfault with passing a program with `-` using stdin.
+- Using no module with `-` would reject the program.
+- Unintended deref of pointers with methods caused regression with hash function.
+- Fix broken sincos function.
+- Bug when a continue is copied in a defer.
+- Compiler error when any/interface initialized using {} #1533.
+- Bug when defers and $if were combined in a macro, which would cause miscompilation.
+- Fixes to the CSV reader.
+- Crash returning struct or vector from function using ternary expression #1537.
+
+### Stdlib changes
+- Remove unintended print of `char[]` as String
+- Add read/write to stream with big endian ints.
+- Move accidently hidden "wrap_bytes".
+- Added CBool #1530.
+
 ## 0.6.3 Change list
 
 ### Changes / improvements
@@ -27,6 +60,7 @@
 - Improved method detection in earlier stages of checking.
 - Allow `@norecurse` attribute for non-recursive imports #1480.
 - wasm32 / wasm64 targets are use-libc=no by default.
+- Add hash/sha256 module 
 
 ### Fixes
 - Issue where a lambda wasn't correctly registered as external. #1408
@@ -69,6 +103,8 @@
 - Fix thread tests.
 - Detect recursion errors on non-recursive mutexes in safe mode.
 - Foreach over distinct pointer failed to be caught as error #1506.
+- Foreach over distinct iterable would ignore operator(len).
+- Compiler crash when compiling c code in a library without --obj-out #1503.
 
 ### Stdlib changes
 - Additional init functions for hashmap.
@@ -81,6 +117,8 @@
 - Added MD5 and crypto::safe_compare.
 - Added generic HMAC.
 - Added generic PBKDF2 implementation.
+- DString `reverse`.
+- `DString.insert_at` now has variants for other types.
 
 ## 0.6.2 Change list
 

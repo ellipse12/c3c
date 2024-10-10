@@ -1134,6 +1134,14 @@ static inline Decl *parse_global_declaration(ParseContext *c)
 		{
 			if (token_is_some_ident(c->tok))
 			{
+				if ((c->tok == TOKEN_TYPE_IDENT || c->tok == TOKEN_CONST_IDENT) &&
+					c->lexer.token_type == TOKEN_LPAREN)
+				{
+					PRINT_ERROR_HERE("This looks like the beginning of a C style function declaration. "
+												 "Unfortunately it seems to be missing the initial 'fn' and "
+												 "the function name does not start with a lower case.");
+					return poisoned_decl;
+				}
 				PRINT_ERROR_HERE("I expected a variable name here, but global variables need to start with lower case.");
 				return poisoned_decl;
 			}
@@ -1158,11 +1166,21 @@ static inline Decl *parse_global_declaration(ParseContext *c)
 		}
 		if (!parse_decl_initializer(c, decl)) return poisoned_decl;
 	}
-	else if (!decl->attributes && tok_is(c, TOKEN_LPAREN) && !threadlocal)
+	else if (!decl->attributes)
 	{
-		// Guess we forgot `fn`? -> improve error reporting.
-		print_error_at(type->span, "This looks like the beginning of a function declaration but it's missing the initial `fn`. Did you forget it?");
-		return poisoned_decl;
+		if (tok_is(c, TOKEN_LPAREN) && !threadlocal)
+		{
+			// Guess we forgot `fn`? -> improve error reporting.
+			print_error_at(type->span, "This looks like the beginning of a function declaration but it's missing the initial `fn`. Did you forget it?");
+			return poisoned_decl;
+		}
+		else if (tok_is(c, TOKEN_LBRACKET))
+		{
+			// Maybe we were doing int foo[4] = ...
+			PRINT_ERROR_HERE("This looks like a declaration of the format 'int foo[4]' "
+							"which is c-style array declaration. In C3, you need to use something like 'int[4] foo' instead.");
+			return poisoned_decl;
+		}
 	}
 	CONSUME_EOS_OR_RET(poisoned_decl);
 	Attr **attributes = decl->attributes;
